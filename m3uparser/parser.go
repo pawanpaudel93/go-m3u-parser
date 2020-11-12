@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -15,15 +14,18 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	country_mapper "github.com/pirsquare/country-mapper"
 )
 
-type channel map[string]interface{}
+// Channel - Map containing streams information.
+type Channel map[string]interface{}
 
 // M3uParser - A parser for m3u files.
 type M3uParser struct {
-	StreamsInfo       []channel
-	StreamsInfoBackup []channel
+	streamsInfo       []Channel
+	streamsInfoBackup []Channel
 	lines             []string
 	timeout           int
 	userAgent         string
@@ -34,43 +36,26 @@ type M3uParser struct {
 var countryClient *country_mapper.CountryInfoClient
 var wg sync.WaitGroup
 
-func initClient() {
+func init() {
 	client, err := country_mapper.Load()
 	if err != nil {
 		panic(err)
 	}
-
 	countryClient = client
+
+	// Output to stdout instead of the default stderr
+	log.SetOutput(os.Stdout)
+
+	// Only log the warning severity or above.
+	log.SetLevel(log.InfoLevel)
+	log.Infoln("Parser started")
 }
 
 func errorLogger(err error) {
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 		os.Exit(1)
 	}
-}
-
-func isPresent(regex string, content string) string {
-	re := regexp.MustCompile(regex)
-	matches := re.FindStringSubmatch(content)
-	if len(matches) > 0 {
-		return matches[1]
-	}
-	return ""
-}
-
-func isValidURL(toTest string) bool {
-	_, err := url.ParseRequestURI(toTest)
-	if err != nil {
-		return false
-	}
-
-	u, err := url.Parse(toTest)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return false
-	}
-
-	return true
 }
 
 func (p *M3uParser) isLive(url string, status *bool) {
@@ -85,15 +70,17 @@ func (p *M3uParser) isLive(url string, status *bool) {
 	}
 }
 
-// ParseM3u -
+// ParseM3u - Parses the content of local file/URL.
 func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 	p.checkLive = checkLive
 	if isValidURL(path) {
+		log.Infoln("Started parsing m3u file...")
 		resp, err := http.Get(path)
 		errorLogger(err)
 		body, err := ioutil.ReadAll(resp.Body)
 		p.content = string(body)
 	} else {
+		log.Infoln("Started parsing m3u URL...")
 		body, err := ioutil.ReadFile(path)
 		errorLogger(err)
 		p.content = string(body)
@@ -108,16 +95,15 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 	if len(p.lines) > 0 {
 		p.parseLines()
 	} else {
-		fmt.Println("No content to parse!!!")
+		log.Infoln("No content to parse!!!")
 	}
 	if p.checkLive {
 		wg.Wait()
 	}
-	p.StreamsInfoBackup = p.StreamsInfo
+	p.streamsInfoBackup = p.streamsInfo
 }
 
 func (p *M3uParser) parseLines() {
-	initClient()
 	for lineNumber := range p.lines {
 		if regexp.MustCompile("#EXTINF").Match([]byte(p.lines[lineNumber])) {
 			go p.parseLine(lineNumber)
@@ -163,7 +149,7 @@ func (p *M3uParser) parseLine(lineNumber int) {
 				statusString = "NOT CHECKED"
 			}
 
-			p.StreamsInfo = append(p.StreamsInfo, channel{
+			p.streamsInfo = append(p.streamsInfo, Channel{
 				"name":     title,
 				"logo":     logo,
 				"url":      streamLink,
@@ -177,22 +163,22 @@ func (p *M3uParser) parseLine(lineNumber int) {
 	}
 }
 
-// FilterBy :
+// FilterBy - Filter streams infomation.
 func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nestedKey bool) {
 	var key0, key1 string
-	var filteredStreams []channel
+	var filteredStreams []Channel
 	if nestedKey {
 		splittedKey := strings.Split(key, "-")
 		key0, key1 = splittedKey[0], splittedKey[1]
 	}
 	if len(filters) == 0 {
-		fmt.Println("Filter word/s missing!!!")
+		log.Warnln("Filter word/s missing!!!")
 		return
 	}
 
 	switch nestedKey {
 	case false:
-		for _, stream := range p.StreamsInfo {
+		for _, stream := range p.streamsInfo {
 			if val, ok := stream[key]; ok {
 				for _, filter := range filters {
 					if retrieve {
@@ -208,7 +194,7 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nested
 			}
 		}
 	case true:
-		for _, stream := range p.StreamsInfo {
+		for _, stream := range p.streamsInfo {
 			if val, ok := stream[key0]; ok {
 				switch v := val.(type) {
 				case map[string]string:
@@ -229,30 +215,35 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nested
 			}
 		}
 	}
-
-	p.StreamsInfo = filteredStreams
+	p.streamsInfo = filteredStreams
 }
 
+//ResetOperations - Reset the stream information list to initial state before various operations.
 func (p *M3uParser) ResetOperations() {
-	p.StreamsInfo = p.StreamsInfoBackup
+	p.streamsInfo = p.streamsInfoBackup
 }
 
+// RemoveByExtension - Remove stream information with certain extension/s.
 func (p *M3uParser) RemoveByExtension(extension []string) {
 	p.FilterBy("url", extension, false, false)
 }
 
+// RetrieveByExtension - Select only streams information with a certain extension/s.
 func (p *M3uParser) RetrieveByExtension(extension []string) {
 	p.FilterBy("url", extension, true, false)
 }
 
+// RemoveByCategory - Removes streams information with category containing a certain filter word/s.
 func (p *M3uParser) RemoveByCategory(extension []string) {
 	p.FilterBy("category", extension, false, false)
 }
 
+// RetrieveByCategory - Retrieve only streams information that contains a certain filter word/s.
 func (p *M3uParser) RetrieveByCategory(extension []string) {
 	p.FilterBy("category", extension, true, false)
 }
 
+// SortBy - Sort streams information.
 func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
 	var key0, key1 string
 	if nestedKey {
@@ -261,12 +252,12 @@ func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
 	}
 	switch nestedKey {
 	case true:
-		value, ok := p.StreamsInfo[0][key0].(map[string]string)
+		value, ok := p.streamsInfo[0][key0].(map[string]string)
 		if ok {
 			if _, ok := value[key1]; ok {
-				sort.Slice(p.StreamsInfo, func(i, j int) bool {
-					val1, _ := p.StreamsInfo[i][key0].(map[string]string)
-					val2, _ := p.StreamsInfo[j][key0].(map[string]string)
+				sort.Slice(p.streamsInfo, func(i, j int) bool {
+					val1, _ := p.streamsInfo[i][key0].(map[string]string)
+					val2, _ := p.streamsInfo[j][key0].(map[string]string)
 					if asc {
 						return val1[key1] < val2[key1]
 					} else {
@@ -277,10 +268,10 @@ func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
 
 		}
 	case false:
-		if _, ok := p.StreamsInfo[0][key]; ok {
-			sort.Slice(p.StreamsInfo, func(i, j int) bool {
-				val1, _ := p.StreamsInfo[i][key].(string)
-				val2, _ := p.StreamsInfo[j][key].(string)
+		if _, ok := p.streamsInfo[0][key]; ok {
+			sort.Slice(p.streamsInfo, func(i, j int) bool {
+				val1, _ := p.streamsInfo[i][key].(string)
+				val2, _ := p.streamsInfo[j][key].(string)
 				if asc {
 					return val1 < val2
 				} else {
@@ -291,34 +282,42 @@ func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
 	}
 }
 
-func (p *M3uParser) GetStreamsSlice() []channel {
-	return p.StreamsInfo
+// GetStreamsSlice - Get the parsed streams information slice.
+func (p *M3uParser) GetStreamsSlice() []Channel {
+	return p.streamsInfo
 }
 
-func (p *M3uParser) GetStreamsJson() string {
-	fmt.Println(p.StreamsInfo)
-	jsonByte, err := json.Marshal(p.StreamsInfo)
+// GetStreamsJSON - Get the streams information as json.
+func (p *M3uParser) GetStreamsJSON() string {
+	fmt.Println(p.streamsInfo)
+	jsonByte, err := json.Marshal(p.streamsInfo)
 	if err != nil {
 		fmt.Println("ERROR: ", err)
 	}
 	return string(jsonByte)
 }
 
-func (p *M3uParser) GetRandomStream(shuffle bool) channel {
+// GetRandomStream - Return a random stream information.
+func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 	rand.Seed(time.Now().UTC().UnixNano())
-	rand.Shuffle(len(p.StreamsInfo), func(i, j int) {
-		p.StreamsInfo[i], p.StreamsInfo[j] = p.StreamsInfo[j], p.StreamsInfo[i]
+	rand.Shuffle(len(p.streamsInfo), func(i, j int) {
+		p.streamsInfo[i], p.streamsInfo[j] = p.streamsInfo[j], p.streamsInfo[i]
 	})
-	return p.StreamsInfo[rand.Intn(len(p.StreamsInfo))]
+	return p.streamsInfo[rand.Intn(len(p.streamsInfo))]
 }
 
-func (p *M3uParser) SaveJsonToFile(filename string) {
-	json, err := json.MarshalIndent(p.StreamsInfo, "", " ")
+// SaveJSONToFile -  Save to JSON file.
+func (p *M3uParser) SaveJSONToFile(filename string) {
+	log.Infof("Saving to file: %s", filename)
+	json, err := json.MarshalIndent(p.streamsInfo, "", "  ")
 	if err != nil {
-		log.Fatal(err)
+		log.Warnln(err)
+	}
+	if !strings.Contains(filename, "json") {
+		filename = filename + ".json"
 	}
 	err = ioutil.WriteFile(filename, json, 0644)
 	if err != nil {
-		log.Fatal(err)
+		log.Warnln(err)
 	}
 }
