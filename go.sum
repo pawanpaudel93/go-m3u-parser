@@ -1,0 +1,4 @@
+github.com/biter777/countries v1.3.4 h1:/wXFeLPAbdl7YvrpJT3p7GGftJTz6uUmOmha2P/DX9A=
+github.com/biter777/countries v1.3.4/go.mod h1:1HSpZ526mYqKJcpT5Ti1kcGQ0L0SrXWIaptUWjFfv2E=
+github.com/pirsquare/country-mapper v0.0.0-20180107162822-0fffc2d62977 h1:y3eVd9XFG+pwC7qkuLiTuCz/EoV49vLYnPdATMX/NzI=
+github.com/pirsquare/country-mapper v0.0.0-20180107162822-0fffc2d62977/go.mod h1:AHizlkKHalvpAKqnCfCwGPIpfMEYa2HNgNcxaKUD8A4=
