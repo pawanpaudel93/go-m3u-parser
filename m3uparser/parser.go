@@ -1,39 +1,24 @@
 package m3uparser
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	country_mapper "github.com/pirsquare/country-mapper"
 )
 
-type tvg struct {
-	id   string
-	name string
-	url  string
-}
-
-type country struct {
-	code string
-	name string
-}
-
-type channel struct {
-	name     string
-	logo     string
-	url      string
-	category string
-	language string
-	country  country
-	tvg      tvg
-	status   string
-}
+type channel map[string]interface{}
 
 // M3uParser - A parser for m3u files.
 type M3uParser struct {
@@ -95,7 +80,6 @@ func (p *M3uParser) isLive(url string, status *bool) {
 	} else {
 		*status = true
 	}
-	fmt.Println(*status, url)
 	if p.checkLive {
 		wg.Done()
 	}
@@ -129,13 +113,12 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 	if p.checkLive {
 		wg.Wait()
 	}
-	fmt.Println(p.StreamsInfo)
+	p.StreamsInfoBackup = p.StreamsInfo
 }
 
 func (p *M3uParser) parseLines() {
 	initClient()
 	for lineNumber := range p.lines {
-		fmt.Println(lineNumber)
 		if regexp.MustCompile("#EXTINF").Match([]byte(p.lines[lineNumber])) {
 			go p.parseLine(lineNumber)
 		}
@@ -181,15 +164,161 @@ func (p *M3uParser) parseLine(lineNumber int) {
 			}
 
 			p.StreamsInfo = append(p.StreamsInfo, channel{
-				name:     title,
-				logo:     logo,
-				url:      streamLink,
-				category: category,
-				language: language,
-				country:  country{code: countryCode, name: countryName},
-				tvg:      tvg{id: tvgID, name: tvgName, url: tvgURL},
-				status:   statusString,
+				"name":     title,
+				"logo":     logo,
+				"url":      streamLink,
+				"category": category,
+				"language": language,
+				"country":  map[string]string{"code": countryCode, "name": countryName},
+				"tvg":      map[string]string{"id": tvgID, "name": tvgName, "url": tvgURL},
+				"status":   statusString,
 			})
 		}
+	}
+}
+
+// FilterBy :
+func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nestedKey bool) {
+	var key0, key1 string
+	var filteredStreams []channel
+	if nestedKey {
+		splittedKey := strings.Split(key, "-")
+		key0, key1 = splittedKey[0], splittedKey[1]
+	}
+	if len(filters) == 0 {
+		fmt.Println("Filter word/s missing!!!")
+		return
+	}
+
+	switch nestedKey {
+	case false:
+		for _, stream := range p.StreamsInfo {
+			if val, ok := stream[key]; ok {
+				for _, filter := range filters {
+					if retrieve {
+						if strings.Contains(strings.ToLower(fmt.Sprintf("%v", val)), strings.ToLower(filter)) {
+							filteredStreams = append(filteredStreams, stream)
+						}
+					} else {
+						if !strings.Contains(strings.ToLower(fmt.Sprintf("%v", val)), strings.ToLower(filter)) {
+							filteredStreams = append(filteredStreams, stream)
+						}
+					}
+				}
+			}
+		}
+	case true:
+		for _, stream := range p.StreamsInfo {
+			if val, ok := stream[key0]; ok {
+				switch v := val.(type) {
+				case map[string]string:
+					if val, ok := v[key1]; ok {
+						for _, filter := range filters {
+							if retrieve {
+								if strings.Contains(strings.ToLower(val), strings.ToLower(filter)) {
+									filteredStreams = append(filteredStreams, stream)
+								}
+							} else {
+								if !strings.Contains(strings.ToLower(val), strings.ToLower(filter)) {
+									filteredStreams = append(filteredStreams, stream)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	p.StreamsInfo = filteredStreams
+}
+
+func (p *M3uParser) ResetOperations() {
+	p.StreamsInfo = p.StreamsInfoBackup
+}
+
+func (p *M3uParser) RemoveByExtension(extension []string) {
+	p.FilterBy("url", extension, false, false)
+}
+
+func (p *M3uParser) RetrieveByExtension(extension []string) {
+	p.FilterBy("url", extension, true, false)
+}
+
+func (p *M3uParser) RemoveByCategory(extension []string) {
+	p.FilterBy("category", extension, false, false)
+}
+
+func (p *M3uParser) RetrieveByCategory(extension []string) {
+	p.FilterBy("category", extension, true, false)
+}
+
+func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
+	var key0, key1 string
+	if nestedKey {
+		splittedKey := strings.Split(key, "-")
+		key0, key1 = splittedKey[0], splittedKey[1]
+	}
+	switch nestedKey {
+	case true:
+		value, ok := p.StreamsInfo[0][key0].(map[string]string)
+		if ok {
+			if _, ok := value[key1]; ok {
+				sort.Slice(p.StreamsInfo, func(i, j int) bool {
+					val1, _ := p.StreamsInfo[i][key0].(map[string]string)
+					val2, _ := p.StreamsInfo[j][key0].(map[string]string)
+					if asc {
+						return val1[key1] < val2[key1]
+					} else {
+						return val1[key1] > val2[key1]
+					}
+				})
+			}
+
+		}
+	case false:
+		if _, ok := p.StreamsInfo[0][key]; ok {
+			sort.Slice(p.StreamsInfo, func(i, j int) bool {
+				val1, _ := p.StreamsInfo[i][key].(string)
+				val2, _ := p.StreamsInfo[j][key].(string)
+				if asc {
+					return val1 < val2
+				} else {
+					return val1 > val2
+				}
+			})
+		}
+	}
+}
+
+func (p *M3uParser) GetStreamsSlice() []channel {
+	return p.StreamsInfo
+}
+
+func (p *M3uParser) GetStreamsJson() string {
+	fmt.Println(p.StreamsInfo)
+	jsonByte, err := json.Marshal(p.StreamsInfo)
+	if err != nil {
+		fmt.Println("ERROR: ", err)
+	}
+	return string(jsonByte)
+}
+
+func (p *M3uParser) GetRandomStream(shuffle bool) channel {
+	rand.Seed(time.Now().UTC().UnixNano())
+	rand.Shuffle(len(p.StreamsInfo), func(i, j int) {
+		p.StreamsInfo[i], p.StreamsInfo[j] = p.StreamsInfo[j], p.StreamsInfo[i]
+	})
+	return p.StreamsInfo[rand.Intn(len(p.StreamsInfo))]
+}
+
+func (p *M3uParser) SaveJsonToFile(filename string) {
+	json, err := json.MarshalIndent(p.StreamsInfo, "", " ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = ioutil.WriteFile(filename, json, 0644)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
