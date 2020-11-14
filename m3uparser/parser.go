@@ -253,13 +253,13 @@ func (p *M3uParser) RetrieveByExtension(extension []string) {
 }
 
 // RemoveByCategory - Removes streams information with category containing a certain filter word/s.
-func (p *M3uParser) RemoveByCategory(extension []string) {
-	p.FilterBy("category", extension, false, false)
+func (p *M3uParser) RemoveByCategory(category []string) {
+	p.FilterBy("category", category, false, false)
 }
 
 // RetrieveByCategory - Retrieve only streams information that contains a certain filter word/s.
-func (p *M3uParser) RetrieveByCategory(extension []string) {
-	p.FilterBy("category", extension, true, false)
+func (p *M3uParser) RetrieveByCategory(category []string) {
+	p.FilterBy("category", category, true, false)
 }
 
 // SortBy - Sort streams information.
