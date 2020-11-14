@@ -1,8 +1,13 @@
 package m3uparser
 
 import (
+	"context"
+	"net/http"
 	"net/url"
 	"regexp"
+	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func isPresent(regex string, content string) string {
@@ -26,4 +31,16 @@ func isValidURL(toTest string) bool {
 	}
 
 	return true
+}
+
+// Get - requests
+func Get(URL string, userAgent string, timeout time.Duration) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequest("GET", URL, nil)
+	if err != nil {
+		log.Warnln(err)
+	}
+	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	return resp, err
 }
