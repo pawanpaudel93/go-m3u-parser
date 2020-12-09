@@ -6,7 +6,8 @@
 > A parser for m3u files. 
 It parses the contents of m3u file to a slice of streams information which can be saved as a JSON file.
 
-### 🏠 [Homepage](https://github.com/pawanpaudel93/m3u_parser)
+>> Check [m3u_parser](https://github.com/pawanpaudel93/m3u_parser) also
+### 🏠 [Homepage](https://github.com/pawanpaudel93/go-m3u_parser)
 
 ## Install
 > go get github.com/pawanpaudel93/go-m3u-parser
