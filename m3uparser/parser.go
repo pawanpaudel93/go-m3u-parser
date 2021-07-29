@@ -159,7 +159,11 @@ func (p *M3uParser) parseLine(lineNumber int) {
 			countryCode := isPresent("tvg-country=\"(.*?)\"", lineInfo)
 			language := isPresent("tvg-language=\"(.*?)\"", lineInfo)
 			tvgURL := isPresent("tvg-url=\"(.*?)\"", lineInfo)
-			countryName := countryClient.MapByAlpha2(strings.ToUpper(countryCode)).Name
+			countryInfo := countryClient.MapByAlpha2(strings.ToUpper(countryCode))
+			countryName := ""
+			if countryInfo != nil {
+				countryName = countryInfo.Name
+			}
 			if p.CheckLive {
 				wg.Add(1)
 				go p.isLive(streamLink, channel)
