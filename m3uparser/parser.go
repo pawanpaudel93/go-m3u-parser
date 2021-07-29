@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	pb "github.com/cheggaaa/pb/v3"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	country_mapper "github.com/pirsquare/country-mapper"
@@ -32,6 +32,7 @@ type M3uParser struct {
 	UserAgent         string
 	CheckLive         bool
 	content           string
+	regexes           map[string]*regexp.Regexp
 }
 
 var countryClient *country_mapper.CountryInfoClient
@@ -47,7 +48,7 @@ func init() {
 
 	// Output to stdout instead of the default stderr
 	log.SetOutput(os.Stdout)
-
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "2006-01-02 15:04:05", FullTimestamp: true})
 	// Only log the warning severity or above.
 	log.SetLevel(log.InfoLevel)
 	log.Infoln("Parser started")
@@ -65,20 +66,29 @@ func (p *M3uParser) isEmpty() bool {
 }
 
 func (p *M3uParser) isLive(url string, channel Channel) {
+	defer wg.Done()
 	_, err := Get(url, p.UserAgent, time.Duration(p.Timeout)*time.Second)
 	if err != nil {
 		channel["status"] = "BAD"
 	} else {
 		channel["status"] = "GOOD"
 	}
-	if p.CheckLive {
-		bar.Increment()
-		wg.Done()
-	}
+	bar.Increment()
 }
 
 // ParseM3u - Parses the content of local file/URL.
 func (p *M3uParser) ParseM3u(path string, checkLive bool) {
+	p.regexes = make(map[string]*regexp.Regexp)
+	p.regexes["file"] = compileRegex(`(?m)^[a-zA-Z]:\\((?:.*?\\)*).*.[\d\w]{3,5}$|^(/[^/]*)+/?.[\d\w]{3,5}$`)
+	p.regexes["tvgName"] = compileRegex("tvg-name=\"(.*?)\"")
+	p.regexes["tvgID"] = compileRegex("tvg-id=\"(.*?)\"")
+	p.regexes["logo"] = compileRegex("tvg-logo=\"(.*?)\"")
+	p.regexes["category"] = compileRegex("group-title=\"(.*?)\"")
+	p.regexes["title"] = compileRegex(`[,](.*?)$`)
+	p.regexes["countryCode"] = compileRegex("tvg-country=\"(.*?)\"")
+	p.regexes["language"] = compileRegex("tvg-language=\"(.*?)\"")
+	p.regexes["tvgURL"] = compileRegex("tvg-url=\"(.*?)\"")
+
 	if p.Timeout == 0 {
 		p.Timeout = 5
 	}
@@ -91,6 +101,7 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 		resp, err := http.Get(path)
 		errorLogger(err)
 		body, err := ioutil.ReadAll(resp.Body)
+		errorLogger(err)
 		p.content = string(body)
 	} else {
 		log.Infoln("Started parsing m3u file...")
@@ -110,71 +121,86 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 	} else {
 		log.Infoln("No content to parse!!!")
 	}
-	if p.CheckLive {
-		wg.Wait()
-		bar.Finish()
-	}
 	p.streamsInfoBackup = p.streamsInfo
 }
 
 func (p *M3uParser) parseLines() {
-	re := regexp.MustCompile("#EXTINF")
+	re := compileRegex("#EXTINF")
+	var count int
 	if p.CheckLive {
-		var count int
 		for lineNumber := range p.lines {
 			if re.Match([]byte(p.lines[lineNumber])) {
 				count++
 			}
 		}
-		bar = pb.StartNew(count - 1)
+		bar = pb.StartNew(count)
 	}
+	wg.Add(count)
 	for lineNumber := range p.lines {
 		if re.Match([]byte(p.lines[lineNumber])) {
 			go p.parseLine(lineNumber)
 		}
 	}
+	wg.Wait()
+	if p.CheckLive {
+		bar.Finish()
+	}
 }
 
 func (p *M3uParser) parseLine(lineNumber int) {
+	defer wg.Done()
+	var isFile bool
+	var streamLink string
 	channel := make(Channel)
 	lineInfo := p.lines[lineNumber]
-	streamLink := ""
-	streamsLink := []string{}
 
 	for i := range [2]int{1, 2} {
-		_, err := url.ParseRequestURI(p.lines[lineNumber+i])
-		if err == nil {
-			streamsLink = append(streamsLink, p.lines[lineNumber+i])
+		isUrl := isValidURL(p.lines[lineNumber+i])
+		if isUrl {
+			streamLink = p.lines[lineNumber+i]
+			break
+		} else if p.regexes["file"].Match([]byte(p.lines[lineNumber+i])) {
+			streamLink = p.lines[lineNumber+i]
+			isFile = true
 			break
 		}
 	}
-	if len(streamsLink) != 0 {
-		streamLink = streamsLink[0]
-		if lineInfo != "" && streamLink != "" {
-			tvgName := isPresent("tvg-name=\"(.*?)\"", lineInfo)
-			tvgID := isPresent("tvg-id=\"(.*?)\"", lineInfo)
-			logo := isPresent("tvg-logo=\"(.*?)\"", lineInfo)
-			category := isPresent("group-title=\"(.*?)\"", lineInfo)
-			title := isPresent("[,](.*?)$", lineInfo)
-			countryCode := isPresent("tvg-country=\"(.*?)\"", lineInfo)
-			language := isPresent("tvg-language=\"(.*?)\"", lineInfo)
-			tvgURL := isPresent("tvg-url=\"(.*?)\"", lineInfo)
-			countryName := countryClient.MapByAlpha2(strings.ToUpper(countryCode)).Name
-			if p.CheckLive {
+
+	if lineInfo != "" && streamLink != "" {
+		var countryName string
+		tvgName := getByRegex(p.regexes["tvgName"], lineInfo)
+		tvgID := getByRegex(p.regexes["tvgID"], lineInfo)
+		logo := getByRegex(p.regexes["logo"], lineInfo)
+		category := getByRegex(p.regexes["category"], lineInfo)
+		title := getByRegex(p.regexes["title"], lineInfo)
+		countryCode := getByRegex(p.regexes["countryCode"], lineInfo)
+		language := getByRegex(p.regexes["language"], lineInfo)
+		tvgURL := getByRegex(p.regexes["tvgURL"], lineInfo)
+		country := countryClient.MapByAlpha2(strings.ToUpper(countryCode))
+		if country == nil {
+			countryName = ""
+		} else {
+			countryName = country.Name
+		}
+		if p.CheckLive {
+			if isFile {
+				bar.Increment()
+				channel["status"] = "GOOD"
+			} else {
 				wg.Add(1)
 				go p.isLive(streamLink, channel)
-			} else {
-				channel["status"] = "NOT CHECKED"
 			}
-			channel["name"] = title
-			channel["logo"] = logo
-			channel["url"] = streamLink
-			channel["category"] = category
-			channel["language"] = language
-			channel["country"] = map[string]string{"code": countryCode, "name": countryName}
-			channel["tvg"] = map[string]string{"id": tvgID, "name": tvgName, "url": tvgURL}
-			p.streamsInfo = append(p.streamsInfo, channel)
 		}
+		channel["name"] = title
+		channel["logo"] = logo
+		channel["url"] = streamLink
+		channel["category"] = category
+		channel["language"] = language
+		channel["country"] = map[string]string{"code": countryCode, "name": countryName}
+		channel["tvg"] = map[string]string{"id": tvgID, "name": tvgName, "url": tvgURL}
+		p.streamsInfo = append(p.streamsInfo, channel)
+	} else {
+		bar.Increment()
 	}
 }
 
@@ -195,6 +221,10 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nested
 		return
 	}
 
+	if _, ok := p.streamsInfo[0][key]; !ok {
+		log.Warnf("Key %s not found in streams info.", key)
+		return
+	}
 	switch nestedKey {
 	case false:
 		for _, stream := range p.streamsInfo {
@@ -335,6 +365,9 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 
 // SaveJSONToFile -  Save to JSON file.
 func (p *M3uParser) SaveJSONToFile(filename string) {
+	if len(p.streamsInfo) == 0 {
+		log.Infoln("No streams info to save.")
+	}
 	log.Infof("Saving to file: %s", filename)
 	json, err := json.MarshalIndent(p.streamsInfo, "", "    ")
 	if err != nil {

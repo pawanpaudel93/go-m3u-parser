@@ -10,8 +10,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func isPresent(regex string, content string) string {
-	re := regexp.MustCompile(regex)
+func compileRegex(regex string) *regexp.Regexp {
+	return regexp.MustCompile(regex)
+}
+
+func getByRegex(re *regexp.Regexp, content string) string {
 	matches := re.FindStringSubmatch(content)
 	if len(matches) > 0 {
 		return matches[1]
