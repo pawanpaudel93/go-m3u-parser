@@ -363,21 +363,60 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 	return p.streamsInfo[rand.Intn(len(p.streamsInfo))]
 }
 
-// SaveJSONToFile -  Save to JSON file.
-func (p *M3uParser) SaveJSONToFile(filename string) {
+func (p *M3uParser) ToFile(fileName string) {
+	var format string
 	if len(p.streamsInfo) == 0 {
 		log.Infoln("No streams info to save.")
+		return
 	}
-	log.Infof("Saving to file: %s", filename)
-	json, err := json.MarshalIndent(p.streamsInfo, "", "    ")
-	if err != nil {
-		log.Warnln(err)
+	if len(strings.Split(fileName, ".")) > 1 {
+		format = strings.ToLower(strings.Split(fileName, ".")[1])
 	}
-	if !strings.Contains(filename, "json") {
-		filename = filename + ".json"
-	}
-	err = ioutil.WriteFile(filename, json, 0644)
-	if err != nil {
-		log.Warnln(err)
+	if format == "json" {
+		log.Infof("Saving to file: %s", fileName)
+		json, err := json.MarshalIndent(p.streamsInfo, "", "    ")
+		errorLogger(err)
+		if !strings.Contains(fileName, "json") {
+			fileName = fileName + ".json"
+		}
+		err = ioutil.WriteFile(fileName, json, 0644)
+		errorLogger(err)
+	} else if format == "m3u" {
+		content := []string{"#EXTM3U"}
+		for _, stream := range p.streamsInfo {
+			line := "#EXTINF:-1"
+			if tvg, ok := stream["tvg"]; ok {
+				tvg := tvg.(map[string]string)
+				for key, val := range tvg {
+					if val != "" {
+						line += fmt.Sprintf(` tvg-%s="%s"`, key, val)
+					}
+				}
+			}
+			if val, ok := stream["logo"]; ok {
+				line += fmt.Sprintf(` tvg-logo="%s"`, val)
+			}
+			if country, ok := stream["country"]; ok {
+				country := country.(map[string]string)
+				if code, ok := country["code"]; ok {
+					line += fmt.Sprintf(` tvg-country="%s"`, code)
+				}
+			}
+			if val, ok := stream["language"]; ok {
+				line += fmt.Sprintf(` tvg-language="%s"`, val)
+			}
+			if val, ok := stream["category"]; ok {
+				line += fmt.Sprintf(` group-title="%s"`, val)
+			}
+			if val, ok := stream["name"]; ok {
+				line += fmt.Sprintf(`,%s`, val)
+			}
+			content = append(content, line)
+			content = append(content, stream["url"].(string))
+		}
+		err := ioutil.WriteFile(fileName, []byte(strings.Join(content, "\n")), 0666)
+		errorLogger(err)
+	} else {
+		log.Infoln("File extension not present/supported !!!")
 	}
 }

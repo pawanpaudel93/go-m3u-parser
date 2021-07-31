@@ -16,5 +16,5 @@ func main() {
 	parser.FilterBy("status", []string{"GOOD"}, true, false)
 	parser.SortBy("category", true, false)
 	fmt.Println("Saved stream information: ", len(parser.GetStreamsSlice()))
-	parser.SaveJSONToFile("pawan.json")
+	parser.ToFile("rowdy.json")
 }
