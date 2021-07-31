@@ -27,6 +27,7 @@ type Channel map[string]interface{}
 type M3uParser struct {
 	streamsInfo       []Channel
 	streamsInfoBackup []Channel
+	enforceSchema     bool
 	lines             []string
 	Timeout           int
 	UserAgent         string
@@ -77,7 +78,8 @@ func (p *M3uParser) isLive(url string, channel Channel) {
 }
 
 // ParseM3u - Parses the content of local file/URL.
-func (p *M3uParser) ParseM3u(path string, checkLive bool) {
+func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
+	p.enforceSchema = enforceSchema
 	p.regexes = make(map[string]*regexp.Regexp)
 	p.regexes["file"] = compileRegex(`(?m)^[a-zA-Z]:\\((?:.*?\\)*).*.[\d\w]{3,5}$|^(/[^/]*)+/?.[\d\w]{3,5}$`)
 	p.regexes["tvgName"] = compileRegex("tvg-name=\"(.*?)\"")
@@ -168,14 +170,16 @@ func (p *M3uParser) parseLine(lineNumber int) {
 
 	if lineInfo != "" && streamLink != "" {
 		var countryName string
-		tvgName := getByRegex(p.regexes["tvgName"], lineInfo)
-		tvgID := getByRegex(p.regexes["tvgID"], lineInfo)
+
+		tvg := make(map[string]string)
+		tvg["name"] = getByRegex(p.regexes["tvgName"], lineInfo)
+		tvg["id"] = getByRegex(p.regexes["tvgID"], lineInfo)
+		tvg["url"] = getByRegex(p.regexes["tvgURL"], lineInfo)
 		logo := getByRegex(p.regexes["logo"], lineInfo)
 		category := getByRegex(p.regexes["category"], lineInfo)
 		title := getByRegex(p.regexes["title"], lineInfo)
 		countryCode := getByRegex(p.regexes["countryCode"], lineInfo)
 		language := getByRegex(p.regexes["language"], lineInfo)
-		tvgURL := getByRegex(p.regexes["tvgURL"], lineInfo)
 		country := countryClient.MapByAlpha2(strings.ToUpper(countryCode))
 		if country == nil {
 			countryName = ""
@@ -191,13 +195,31 @@ func (p *M3uParser) parseLine(lineNumber int) {
 				go p.isLive(streamLink, channel)
 			}
 		}
-		channel["name"] = title
-		channel["logo"] = logo
+		if title != "" || p.enforceSchema {
+			channel["title"] = title
+		}
+		if logo != "" || p.enforceSchema {
+			channel["logo"] = logo
+		}
+		if category != "" || p.enforceSchema {
+			channel["category"] = category
+		}
+		if language != "" || p.enforceSchema {
+			channel["language"] = language
+		}
+		if tvg["id"] != "" || tvg["name"] != "" || tvg["url"] != "" || p.enforceSchema {
+			temp_tvg := make(map[string]string)
+			for key, value := range tvg {
+				if value != "" || p.enforceSchema {
+					temp_tvg[key] = value
+				}
+			}
+			channel["tvg"] = temp_tvg
+		}
+		if countryCode != "" || p.enforceSchema {
+			channel["country"] = map[string]string{"code": countryCode, "name": countryName}
+		}
 		channel["url"] = streamLink
-		channel["category"] = category
-		channel["language"] = language
-		channel["country"] = map[string]string{"code": countryCode, "name": countryName}
-		channel["tvg"] = map[string]string{"id": tvgID, "name": tvgName, "url": tvgURL}
 		p.streamsInfo = append(p.streamsInfo, channel)
 	} else {
 		bar.Increment()
@@ -205,26 +227,30 @@ func (p *M3uParser) parseLine(lineNumber int) {
 }
 
 // FilterBy - Filter streams infomation.
-func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nestedKey bool) {
+func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 	if p.isEmpty() {
 		log.Infof("No streams info to filter.")
 		return
 	}
-	var key0, key1 string
-	var filteredStreams []Channel
-	if nestedKey {
-		splittedKey := strings.Split(key, "-")
-		key0, key1 = splittedKey[0], splittedKey[1]
-	}
+
 	if len(filters) == 0 {
 		log.Warnln("Filter word/s missing!!!")
 		return
 	}
 
-	if _, ok := p.streamsInfo[0][key]; !ok {
-		log.Warnf("Key %s not found in streams info.", key)
+	var key0, key1 string
+	var filteredStreams []Channel
+	var nestedKey bool
+
+	splittedKey := strings.Split(key, "-")
+	if len(splittedKey) == 2 {
+		key0, key1 = splittedKey[0], splittedKey[1]
+		nestedKey = true
+	} else if len(splittedKey) > 2 {
+		log.Warnf("Nested key is seperated by multiple key seperator -")
 		return
 	}
+
 	switch nestedKey {
 	case false:
 		for _, stream := range p.streamsInfo {
@@ -274,35 +300,43 @@ func (p *M3uParser) ResetOperations() {
 
 // RemoveByExtension - Remove stream information with certain extension/s.
 func (p *M3uParser) RemoveByExtension(extension []string) {
-	p.FilterBy("url", extension, false, false)
+	p.FilterBy("url", extension, false)
 }
 
 // RetrieveByExtension - Select only streams information with a certain extension/s.
 func (p *M3uParser) RetrieveByExtension(extension []string) {
-	p.FilterBy("url", extension, true, false)
+	p.FilterBy("url", extension, true)
 }
 
 // RemoveByCategory - Removes streams information with category containing a certain filter word/s.
 func (p *M3uParser) RemoveByCategory(category []string) {
-	p.FilterBy("category", category, false, false)
+	p.FilterBy("category", category, false)
 }
 
 // RetrieveByCategory - Retrieve only streams information that contains a certain filter word/s.
 func (p *M3uParser) RetrieveByCategory(category []string) {
-	p.FilterBy("category", category, true, false)
+	p.FilterBy("category", category, true)
 }
 
 // SortBy - Sort streams information.
-func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
+func (p *M3uParser) SortBy(key string, asc bool) {
 	if p.isEmpty() {
 		log.Infof("No streams info to sort.")
 		return
 	}
+
 	var key0, key1 string
-	if nestedKey {
-		splittedKey := strings.Split(key, "-")
+	var nestedKey bool
+
+	splittedKey := strings.Split(key, "-")
+	if len(splittedKey) == 2 {
 		key0, key1 = splittedKey[0], splittedKey[1]
+		nestedKey = true
+	} else if len(splittedKey) > 2 {
+		log.Warnf("Nested key is seperated by multiple key seperator -")
+		return
 	}
+
 	switch nestedKey {
 	case true:
 		value, ok := p.streamsInfo[0][key0].(map[string]string)
@@ -365,16 +399,17 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 
 func (p *M3uParser) ToFile(fileName string) {
 	var format string
-	if len(p.streamsInfo) == 0 {
+	if p.isEmpty() {
 		log.Infoln("No streams info to save.")
 		return
 	}
 	if len(strings.Split(fileName, ".")) > 1 {
 		format = strings.ToLower(strings.Split(fileName, ".")[1])
 	}
+	log.Infof("Saving to file: %s", fileName)
 	if format == "json" {
-		log.Infof("Saving to file: %s", fileName)
 		json, err := json.MarshalIndent(p.streamsInfo, "", "    ")
+		json = []byte(strings.ReplaceAll(string(json), `: ""`, ": null"))
 		errorLogger(err)
 		if !strings.Contains(fileName, "json") {
 			fileName = fileName + ".json"
@@ -393,23 +428,23 @@ func (p *M3uParser) ToFile(fileName string) {
 					}
 				}
 			}
-			if val, ok := stream["logo"]; ok {
-				line += fmt.Sprintf(` tvg-logo="%s"`, val)
+			if logo, ok := stream["logo"]; ok && logo != "" {
+				line += fmt.Sprintf(` tvg-logo="%s"`, logo)
 			}
 			if country, ok := stream["country"]; ok {
 				country := country.(map[string]string)
-				if code, ok := country["code"]; ok {
+				if code, ok := country["code"]; ok && code != "" {
 					line += fmt.Sprintf(` tvg-country="%s"`, code)
 				}
 			}
-			if val, ok := stream["language"]; ok {
-				line += fmt.Sprintf(` tvg-language="%s"`, val)
+			if language, ok := stream["language"]; ok && language != "" {
+				line += fmt.Sprintf(` tvg-language="%s"`, language)
 			}
-			if val, ok := stream["category"]; ok {
-				line += fmt.Sprintf(` group-title="%s"`, val)
+			if category, ok := stream["category"]; ok && category != "" {
+				line += fmt.Sprintf(` group-title="%s"`, category)
 			}
-			if val, ok := stream["name"]; ok {
-				line += fmt.Sprintf(`,%s`, val)
+			if title, ok := stream["title"]; ok && title != "" {
+				line += fmt.Sprintf(`,%s`, title)
 			}
 			content = append(content, line)
 			content = append(content, stream["url"].(string))

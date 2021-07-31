@@ -29,11 +29,11 @@ func main() {
 	timeout := 5 // in seconds
 	parser := m3uparser.M3uParser{UserAgent: userAgent, Timeout: timeout}
 	// file path can also be used /home/pawan/Downloads/ru.m3u
-	parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true)
-	parser.FilterBy("status", []string{"GOOD"}, true, false)
-	parser.SortBy("category", true, false)
+	parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true, true)
+	parser.FilterBy("status", []string{"GOOD"}, true)
+	parser.SortBy("category", true)
 	fmt.Println("Saved stream information: ", len(parser.GetStreamsSlice()))
-	parser.SaveJSONToFile("pawan.json")
+	parser.ToFile("rowdy.json")
 }
 
 ```
@@ -43,12 +43,12 @@ func main() {
 	timeout := 5 // in seconds
 	parser := m3uparser.M3uParser{UserAgent: userAgent, Timeout: timeout}
 	// file path can also be used /home/pawan/Downloads/ru.m3u
-	parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true)
+	parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true, true)
 ```
 
 >Functions
 ```go
-func (p *M3uParser) ParseM3u(path string, checkLive bool) {
+func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
 
         """Parses the content of local file/URL.
         It downloads the file from the given url or use the local file path to get the content and parses line by line
@@ -56,11 +56,12 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool) {
 		
         path: Path can be a url or local filepath
         checkLive: To check if the stream links are working or not
+        enforceSchema: If true it keeps all the fields else it removes the key having empty string values.
         """
 		
 }
 	
-func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nestedKey bool) {
+func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 
         """Filter streams infomation.
         It retrieves/removes stream information from streams information list using filter/s on key.
@@ -68,7 +69,6 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool, nested
         key: Key can be single or nested. eg. key='name', key='language-name'
         filters: List of filter/s to perform the retrieve or remove operation.
         retrieve: True to retrieve and False for removing based on key.
-        nestedKey: True/False for if the key is nested or not.
         """
 		
 }
@@ -117,14 +117,13 @@ func (p *M3uParser) RetrieveByCategory(category []string) {
         """
 }
 		
-func (p *M3uParser) SortBy(key string, asc bool, nestedKey bool) {
+func (p *M3uParser) SortBy(key string, asc bool) {
 
         """Sort streams information.
         It sorts streams information list sorting by key in asc/desc order.
 
         key: It can be single or nested key.
         asc: Sort by asc or desc order.
-        nestedKey: True/False for if the key is nested or not.
         """
 }
 
@@ -148,10 +147,10 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
         """
 }
 		
-func (p *M3uParser) SaveJSONToFile(filename string) {
+func (p *M3uParser) ToFile(filename string) {
 
-        """Save to json file.
-        It saves streams information as a JSON file with a given filename.
+        """Save to json/m3u file.
+        It saves streams information as a JSON/M3U file with a given filename.
 
         filename: Name of the file to save streams information.
         """
