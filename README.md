@@ -1,6 +1,6 @@
 # go-m3u-parser
 
-![version](https://img.shields.io/badge/version-0.0.1-blue.svg?cacheSeconds=2592000)
+![version](https://img.shields.io/badge/version-0.0.2-blue.svg?cacheSeconds=2592000)
 
 A parser for m3u files. It parses the contents of m3u file to a slice of streams information which can be saved as a JSON file.
 
