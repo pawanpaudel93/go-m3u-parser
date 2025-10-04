@@ -38,6 +38,8 @@ func main() {
 
 ## Usage
 
+### Basic Usage
+
 ```go
  userAgent := "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
  timeout := 5 // in seconds
@@ -46,20 +48,59 @@ func main() {
  parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true, true)
 ```
 
+### Advanced Usage Examples
+
+```go
+// Parse from different sources
+parser := m3uparser.M3uParser{}
+
+// 1. Parse from URL
+parser.ParseM3u("https://example.com/playlist.m3u", false, false)
+
+// 2. Parse from local file
+parser.ParseM3u("/path/to/local/playlist.m3u", false, false)
+
+// 3. Parse raw M3U content directly
+rawM3U := `#EXTM3U
+#EXTINF:-1 tvg-id="channel1.np",Channel 1 (1080p)
+https://example.com/stream1.m3u8
+#EXTINF:-1 tvg-id="channel2.np",Channel 2 (720p)
+https://example.com/stream2.m3u8`
+parser.ParseM3u(rawM3U, false, false)
+
+// 4. Parse with live stream validation
+parser.ParseM3u("https://example.com/playlist.m3u", true, false)
+
+// 5. Parse with enforced schema (keeps empty fields)
+parser.ParseM3u("https://example.com/playlist.m3u", false, true)
+```
+
+### Configuration Options
+
+```go
+parser := m3uparser.M3uParser{
+    UserAgent: "Custom User Agent",  // Optional: Default is Chrome 86
+    Timeout:   10,                   // Optional: Default is 5 seconds
+}
+```
+
 >Functions
 
 ```go
-func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
+func (p *M3uParser) ParseM3u(source string, checkLive bool, enforceSchema bool) {
 
-        """Parses the content of local file/URL.
-        It downloads the file from the given url or use the local file path to get the content and parses line by line
-        to a structured format of streams information.
+        """Parses the content of local file/URL or raw M3U content.
+        It downloads the file from the given URL, reads from a local file path, or parses raw M3U content directly.
+        The function parses line by line to extract stream information into a structured format.
   
-        path: Path can be a url or local filepath
-        checkLive: To check if the stream links are working or not
-        enforceSchema: If true it keeps all the fields else it removes the key having empty string values.
+        Parameters:
+        - source: Can be one of the following:
+          * URL: A valid HTTP/HTTPS URL pointing to an M3U file
+          * File path: Local file path to an M3U file (e.g., "/path/to/file.m3u")
+          * Raw content: M3U content string
+        - checkLive: Boolean flag to check if stream URLs are accessible and working
+        - enforceSchema: If true, keeps all fields even with empty values; if false, removes keys with empty string values
         """
-  
 }
  
 func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
