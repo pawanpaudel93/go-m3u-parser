@@ -14,7 +14,6 @@ import (
 	"time"
 
 	pb "github.com/cheggaaa/pb/v3"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	country_mapper "github.com/pirsquare/country-mapper"
@@ -50,7 +49,7 @@ func init() {
 
 	// Output to stdout instead of the default stderr
 	log.SetOutput(os.Stdout)
-	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: "2006-01-02 15:04:05", FullTimestamp: true})
+	log.SetFormatter(&log.TextFormatter{TimestampFormat: "2006-01-02 15:04:05", FullTimestamp: true})
 	// Only log the warning severity or above.
 	log.SetLevel(log.InfoLevel)
 	log.Infoln("Parser started")
@@ -78,7 +77,17 @@ func (p *M3uParser) isLive(url string, channel Channel) {
 	bar.Increment()
 }
 
-// ParseM3u - Parses the content of local file/URL or raw content.
+// ParseM3u parses the content of local file/URL or raw M3U content.
+// It downloads the file from the given URL, reads from a local file path, or parses raw M3U content directly.
+// The function parses line by line to extract stream information into a structured format.
+//
+// Parameters:
+//   - source: Can be one of the following:
+//   - URL: A valid HTTP/HTTPS URL pointing to an M3U file
+//   - File path: Local file path to an M3U file (e.g., "/path/to/file.m3u")
+//   - Raw content: M3U content string
+//   - checkLive: Boolean flag to check if stream URLs are accessible and working
+//   - enforceSchema: If true, keeps all fields even with empty values; if false, removes keys with empty string values
 func (p *M3uParser) ParseM3u(source string, checkLive bool, enforceSchema bool) {
 	p.enforceSchema = enforceSchema
 	p.regexes = make(map[string]*regexp.Regexp)
@@ -237,7 +246,13 @@ func (p *M3uParser) parseLine(lineNumber int) {
 	}
 }
 
-// FilterBy - Filter streams infomation.
+// FilterBy filters stream information.
+// It retrieves/removes stream information from streams information slice using filter/s on key.
+//
+// Parameters:
+//   - key: Key can be single or nested. eg. key='name', key='language-name'
+//   - filters: Slice of filter/s to perform the retrieve or remove operation.
+//   - retrieve: True to retrieve and False for removing based on key.
 func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 	if p.isEmpty() {
 		log.Infof("No streams info to filter.")
@@ -304,32 +319,53 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 	p.streamsInfo = filteredStreams
 }
 
-// ResetOperations - Reset the stream information list to initial state before various operations.
+// ResetOperations resets the stream information slice to initial state before various operations.
 func (p *M3uParser) ResetOperations() {
 	p.streamsInfo = p.streamsInfoBackup
 }
 
-// RemoveByExtension - Remove stream information with certain extension/s.
+// RemoveByExtension removes stream information with certain extension/s.
+// It removes stream information from streams information slice based on extension/s provided.
+//
+// Parameters:
+//   - extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
 func (p *M3uParser) RemoveByExtension(extension []string) {
 	p.FilterBy("url", extension, false)
 }
 
-// RetrieveByExtension - Select only streams information with a certain extension/s.
+// RetrieveByExtension selects only streams information with a certain extension/s.
+// It retrieves the stream information based on extension/s provided.
+//
+// Parameters:
+//   - extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
 func (p *M3uParser) RetrieveByExtension(extension []string) {
 	p.FilterBy("url", extension, true)
 }
 
-// RemoveByCategory - Removes streams information with category containing a certain filter word/s.
+// RemoveByCategory removes streams information with category containing a certain filter word/s.
+// It removes stream information based on category using filter word/s.
+//
+// Parameters:
+//   - category: It is slice of category/categories.
 func (p *M3uParser) RemoveByCategory(category []string) {
 	p.FilterBy("category", category, false)
 }
 
-// RetrieveByCategory - Retrieve only streams information that contains a certain filter word/s.
+// RetrieveByCategory retrieves only streams information that contains a certain filter word/s.
+// It retrieves stream information based on category/categories.
+//
+// Parameters:
+//   - category: It is slice of category/categories.
 func (p *M3uParser) RetrieveByCategory(category []string) {
 	p.FilterBy("category", category, true)
 }
 
-// SortBy - Sort streams information.
+// SortBy sorts streams information.
+// It sorts streams information slice sorting by key in asc/desc order.
+//
+// Parameters:
+//   - key: It can be single or nested key.
+//   - asc: Sort by asc or desc order.
 func (p *M3uParser) SortBy(key string, asc bool) {
 	if p.isEmpty() {
 		log.Infof("No streams info to sort.")
@@ -380,12 +416,13 @@ func (p *M3uParser) SortBy(key string, asc bool) {
 	}
 }
 
-// GetStreamsSlice - Get the parsed streams information slice.
+// GetStreamsSlice gets the parsed streams information slice.
+// It returns the streams information slice.
 func (p *M3uParser) GetStreamsSlice() []Channel {
 	return p.streamsInfo
 }
 
-// GetStreamsJSON - Get the streams information as json.
+// GetStreamsJSON gets the streams information as json.
 func (p *M3uParser) GetStreamsJSON() string {
 	jsonByte, err := json.Marshal(p.streamsInfo)
 	if err != nil {
@@ -395,7 +432,11 @@ func (p *M3uParser) GetStreamsJSON() string {
 	return string(jsonByte)
 }
 
-// GetRandomStream - Return a random stream information.
+// GetRandomStream returns a random stream information.
+// It returns a random stream information with shuffle if required.
+//
+// Parameters:
+//   - shuffle: To shuffle the streams information slice before returning the random stream information.
 func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 	if p.isEmpty() {
 		log.Infoln("No streams info for random selection.")
@@ -408,6 +449,11 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
 	return p.streamsInfo[rand.Intn(len(p.streamsInfo))]
 }
 
+// ToFile saves streams information to a json/m3u file.
+// It saves streams information as a JSON/M3U file with a given filename.
+//
+// Parameters:
+//   - filename: Name of the file to save streams information.
 func (p *M3uParser) ToFile(fileName string) {
 	var format string
 	if p.isEmpty() {

@@ -95,9 +95,9 @@ func (p *M3uParser) ParseM3u(source string, checkLive bool, enforceSchema bool) 
   
         Parameters:
         - source: Can be one of the following:
-          * URL: A valid HTTP/HTTPS URL pointing to an M3U file
-          * File path: Local file path to an M3U file (e.g., "/path/to/file.m3u")
-          * Raw content: M3U content string
+          - URL: A valid HTTP/HTTPS URL pointing to an M3U file
+          - File path: Local file path to an M3U file (e.g., "/path/to/file.m3u")
+          - Raw content: M3U content string
         - checkLive: Boolean flag to check if stream URLs are accessible and working
         - enforceSchema: If true, keeps all fields even with empty values; if false, removes keys with empty string values
         """
@@ -105,28 +105,30 @@ func (p *M3uParser) ParseM3u(source string, checkLive bool, enforceSchema bool) 
  
 func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 
-        """Filter streams infomation.
-        It retrieves/removes stream information from streams information list using filter/s on key.
+        """Filter streams information.
+        It retrieves/removes stream information from streams information slice using filter/s on key.
 
-        key: Key can be single or nested. eg. key='name', key='language-name'
-        filters: List of filter/s to perform the retrieve or remove operation.
-        retrieve: True to retrieve and False for removing based on key.
+        Parameters:
+        - key: Key can be single or nested. eg. key='name', key='language-name'
+        - filters: Slice of filter/s to perform the retrieve or remove operation.
+        - retrieve: True to retrieve and False for removing based on key.
         """
   
 }
   
 func (p *M3uParser) ResetOperations() {
 
-        """Reset the stream information list to initial state before various operations."""
+        """Reset the stream information slice to initial state before various operations."""
   
 }
   
 func (p *M3uParser) RemoveByExtension(extension []string) {
 
         """Remove stream information with certain extension/s.
-        It removes stream information from streams information list based on extension/s provided.
+        It removes stream information from streams information slice based on extension/s provided.
   
-        extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
+        Parameters:
+        - extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
         """
   
 }
@@ -136,7 +138,8 @@ func (p *M3uParser) RetrieveByExtension(extension []string) {
         """Select only streams information with a certain extension/s.
         It retrieves the stream information based on extension/s provided.
   
-        extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
+        Parameters:
+        - extension: Name of the extension like mp4, m3u8 etc. It is slice of extension/s.
         """
 }
   
@@ -145,8 +148,8 @@ func (p *M3uParser) RemoveByCategory(category []string) {
         """Removes streams information with category containing a certain filter word/s.
         It removes stream information based on category using filter word/s.
   
-        category: It is slice of category/categories.
-  
+        Parameters:
+        - category: It is slice of category/categories.
         """
 }
   
@@ -155,17 +158,19 @@ func (p *M3uParser) RetrieveByCategory(category []string) {
         """Retrieve only streams information that contains a certain filter word/s.
         It retrieves stream information based on category/categories.
 
-        category: It is slice of category/categories.
+        Parameters:
+        - category: It is slice of category/categories.
         """
 }
   
 func (p *M3uParser) SortBy(key string, asc bool) {
 
         """Sort streams information.
-        It sorts streams information list sorting by key in asc/desc order.
+        It sorts streams information slice sorting by key in asc/desc order.
 
-        key: It can be single or nested key.
-        asc: Sort by asc or desc order.
+        Parameters:
+        - key: It can be single or nested key.
+        - asc: Sort by asc or desc order.
         """
 }
 
@@ -176,7 +181,7 @@ func (p *M3uParser) GetStreamsJSON() string {
   
 func (p *M3uParser) GetStreamsSlice() []Channel {
 
-        """Get the parsed streams information list.
+        """Get the parsed streams information slice.
         It returns the streams information slice.
         """
   
@@ -185,7 +190,8 @@ func (p *M3uParser) GetRandomStream(shuffle bool) Channel {
         """Return a random stream information
         It returns a random stream information with shuffle if required.
 
-        shuffle: To shuffle the streams information list before returning the random stream information.
+        Parameters:
+        - shuffle: To shuffle the streams information slice before returning the random stream information.
         """
 }
   
@@ -194,7 +200,8 @@ func (p *M3uParser) ToFile(filename string) {
         """Save to json/m3u file.
         It saves streams information as a JSON/M3U file with a given filename.
 
-        filename: Name of the file to save streams information.
+        Parameters:
+        - filename: Name of the file to save streams information.
         """
 }
 
@@ -205,6 +212,7 @@ func (p *M3uParser) ToFile(filename string) {
 - `Rust`: [rs-m3u-parser](https://github.com/pawanpaudel93/rs-m3u-parser)
 - `Python`: [m3u-parser](https://github.com/pawanpaudel93/m3u-parser)
 - `Typescript`: [ts-m3u-parser](https://github.com/pawanpaudel93/ts-m3u-parser)
+- `Lua`: [lua-m3u-parser](https://github.com/pawanpaudel93/lua-m3u-parser)
 
 ## Author
 
