@@ -12,7 +12,7 @@ func main() {
 	timeout := 5 // in seconds
 	parser := m3uparser.M3uParser{UserAgent: userAgent, Timeout: timeout}
 	// file path can also be used /home/pawan/Downloads/ru.m3u
-	parser.ParseM3u("https://drive.google.com/uc?id=1VGv8ZYQrrSYPVQ7GCWLgjMl6w9Ccrs4v&export=download", true, true)
+	parser.ParseM3u("https://raw.githubusercontent.com/iptv-org/iptv/refs/heads/master/streams/np.m3u", true, true)
 	parser.FilterBy("status", []string{"GOOD"}, true)
 	parser.SortBy("category", true)
 	fmt.Println("Saved stream information: ", len(parser.GetStreamsSlice()))

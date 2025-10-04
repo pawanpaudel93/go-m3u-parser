@@ -34,6 +34,7 @@ type M3uParser struct {
 	CheckLive         bool
 	content           string
 	regexes           map[string]*regexp.Regexp
+	mutex             sync.Mutex
 }
 
 var countryClient *country_mapper.CountryInfoClient
@@ -77,8 +78,8 @@ func (p *M3uParser) isLive(url string, channel Channel) {
 	bar.Increment()
 }
 
-// ParseM3u - Parses the content of local file/URL.
-func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
+// ParseM3u - Parses the content of local file/URL or raw content.
+func (p *M3uParser) ParseM3u(source string, checkLive bool, enforceSchema bool) {
 	p.enforceSchema = enforceSchema
 	p.regexes = make(map[string]*regexp.Regexp)
 	p.regexes["file"] = compileRegex(`(?m)^[a-zA-Z]:\\((?:.*?\\)*).*.[\d\w]{3,5}$|^(/[^/]*)+/?.[\d\w]{3,5}$`)
@@ -98,16 +99,22 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
 		p.UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
 	}
 	p.CheckLive = checkLive
-	if isValidURL(path) {
+
+	// Check if source starts with "#EXTM3U", is empty, or contains newlines - if so, treat as raw content
+	trimmedSource := strings.TrimSpace(source)
+	if strings.HasPrefix(trimmedSource, "#EXTM3U") || trimmedSource == "" || strings.Contains(source, "\n") {
+		log.Infoln("Started parsing m3u from raw content...")
+		p.content = source
+	} else if isValidURL(source) {
 		log.Infoln("Started parsing m3u URL...")
-		resp, err := http.Get(path)
+		resp, err := http.Get(source)
 		errorLogger(err)
 		body, err := ioutil.ReadAll(resp.Body)
 		errorLogger(err)
 		p.content = string(body)
 	} else {
 		log.Infoln("Started parsing m3u file...")
-		body, err := ioutil.ReadFile(path)
+		body, err := ioutil.ReadFile(source)
 		errorLogger(err)
 		p.content = string(body)
 	}
@@ -129,12 +136,12 @@ func (p *M3uParser) ParseM3u(path string, checkLive bool, enforceSchema bool) {
 func (p *M3uParser) parseLines() {
 	re := compileRegex("#EXTINF")
 	var count int
-	if p.CheckLive {
-		for lineNumber := range p.lines {
-			if re.Match([]byte(p.lines[lineNumber])) {
-				count++
-			}
+	for lineNumber := range p.lines {
+		if re.Match([]byte(p.lines[lineNumber])) {
+			count++
 		}
+	}
+	if p.CheckLive {
 		bar = pb.StartNew(count)
 	}
 	wg.Add(count)
@@ -220,9 +227,13 @@ func (p *M3uParser) parseLine(lineNumber int) {
 			channel["country"] = map[string]string{"code": countryCode, "name": countryName}
 		}
 		channel["url"] = streamLink
+		p.mutex.Lock()
 		p.streamsInfo = append(p.streamsInfo, channel)
+		p.mutex.Unlock()
 	} else {
-		bar.Increment()
+		if p.CheckLive {
+			bar.Increment()
+		}
 	}
 }
 
@@ -293,7 +304,7 @@ func (p *M3uParser) FilterBy(key string, filters []string, retrieve bool) {
 	p.streamsInfo = filteredStreams
 }
 
-//ResetOperations - Reset the stream information list to initial state before various operations.
+// ResetOperations - Reset the stream information list to initial state before various operations.
 func (p *M3uParser) ResetOperations() {
 	p.streamsInfo = p.streamsInfoBackup
 }
@@ -407,7 +418,8 @@ func (p *M3uParser) ToFile(fileName string) {
 		format = strings.ToLower(strings.Split(fileName, ".")[1])
 	}
 	log.Infof("Saving to file: %s", fileName)
-	if format == "json" {
+	switch format {
+	case "json":
 		json, err := json.MarshalIndent(p.streamsInfo, "", "    ")
 		json = []byte(strings.ReplaceAll(string(json), `: ""`, ": null"))
 		errorLogger(err)
@@ -416,7 +428,7 @@ func (p *M3uParser) ToFile(fileName string) {
 		}
 		err = ioutil.WriteFile(fileName, json, 0644)
 		errorLogger(err)
-	} else if format == "m3u" {
+	case "m3u":
 		content := []string{"#EXTM3U"}
 		for _, stream := range p.streamsInfo {
 			line := "#EXTINF:-1"
@@ -451,7 +463,7 @@ func (p *M3uParser) ToFile(fileName string) {
 		}
 		err := ioutil.WriteFile(fileName, []byte(strings.Join(content, "\n")), 0666)
 		errorLogger(err)
-	} else {
+	default:
 		log.Infoln("File extension not present/supported !!!")
 	}
 }
